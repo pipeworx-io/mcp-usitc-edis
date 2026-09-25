@@ -1,0 +1,32 @@
+{
+  "name": "@pipeworx/mcp-usitc-edis",
+  "version": "0.1.0",
+  "description": "USITC EDIS / IDS — the docket for Section 337 (unfair-import / patent) and",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "bin": {
+    "mcp-usitc-edis": "bin/cli.js"
+  },
+  "keywords": ["mcp", "mcp-server", "model-context-protocol", "pipeworx", "usitc-edis"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pipeworx-io/mcp-usitc-edis.git"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@cloudflare/workers-types": "^4.20260405.1"
+  },
+  "pipeworx": {
+    "sourceHash": "v1-24e92e093ef03e9a4b9947e4b6de4a2960818f602f31236334fb5db2d9bffbf9",
+    "sourceCommit": "ec84f7a608c872093ea6ba846ef0dd6e694510cc"
+  }
+}
