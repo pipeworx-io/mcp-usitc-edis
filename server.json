@@ -2,8 +2,8 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.pipeworx-io/usitc-edis",
   "title": "Usitc Edis",
-  "description": "USITC EDIS / IDS — the docket for Section 337 (unfair-import / patent) and",
-  "version": "0.1.0",
+  "description": "USITC IDS (Investigations Database System, ids.usitc.gov) — the CASE",
+  "version": "0.1.1",
   "websiteUrl": "https://pipeworx.io/packs/usitc-edis",
   "repository": {
     "url": "https://github.com/pipeworx-io/mcp-usitc-edis",

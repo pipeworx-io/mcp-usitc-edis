@@ -636,26 +636,25 @@ function collapse(s: string): string {
   return s.replace(/\s+/g, ' ').trim();
 }
 /**
- * USITC EDIS / IDS — the docket for Section 337 (unfair-import / patent) and
- * Title VII (antidumping/countervailing-duty) investigations at the US
- * International Trade Commission.
+ * USITC IDS (Investigations Database System, ids.usitc.gov) — the CASE
+ * record for Section 337 (unfair-import / patent) and Title VII
+ * (antidumping/countervailing-duty) investigations at the US International
+ * Trade Commission: search/list all ~4,400 investigations, and full detail
+ * for one (status, dates, docket number, category). KEYLESS, verified live
+ * 2026-09-24.
  *
- * TWO USITC services, one pack, because together they cover the docket end
- * to end and separately neither does. BOTH ARE KEYLESS for an ordinary call,
- * verified live 2026-09-24:
- *
- * - IDS (Investigations Database System, ids.usitc.gov) — the CASE record:
- *   search/list all ~4,400 investigations, and full detail for one (status,
- *   dates, docket number, category). `itc_*` tools.
- * - EDIS (Electronic Document Information System, edis.usitc.gov) — the
- *   DOCUMENTS filed in an investigation and their attachments. `edis_*`
- *   tools. Every GET resource answers 200 with real rows carrying NO
- *   Authorization header (`Accept: application/xml` — `application/json`
- *   406s on these three resources), which contradicts the WADL's
- *   implication that every resource requires one. `PLATFORM_EDIS_TOKEN` — a
- *   login.gov-issued JWT Bruce holds, expiring 2026-10-08T04:00:00Z — exists
- *   purely as a FALLBACK for if that keyless route ever closes; see
- *   `edisGetKeylessFirst`.
+ * IDS-ONLY (Bruce, 2026-09-25). This pack previously also served EDIS
+ * (edis.usitc.gov) — the DOCUMENTS filed in an investigation and their
+ * attachments — via three `edis_*` tools that impersonated a curl User-Agent
+ * (`curl/8.7.1 ` prefix) to clear edis.usitc.gov's WAF, which 403s any
+ * non-generic client even when a valid `PLATFORM_EDIS_TOKEN` is sent. Bruce
+ * ruled against spoofing a User-Agent to defeat that block — reversing the
+ * earlier `ship-curl-prefix` case ruling — so the `edis_*` tools, the curl
+ * prefix, the token decode/expiry logic, and the keyless-first/token-fallback
+ * plumbing that only existed to serve them have all been removed. Filed
+ * documents at EDIS are NOT served by this pack until USITC allowlists our
+ * honest User-Agent (`pipeworx-usitc-edis/1.0 (+https://pipeworx.io)`); ask
+ * for that allowlisting before re-adding an EDIS path here.
  *
  * Complements `adcvd-case`/`adcvd-orders` (Commerce/ITC AD/CVD
  * determinations) with the DOCKET itself, and `hts` (USITC's OTHER data
@@ -666,9 +665,6 @@ function collapse(s: string): string {
  *                               first, with a same-page type/active filter
  * - itc_investigation_detail:  full record for one investigation_id
  * - itc_investigation_types:   the 4 top-level investigation type categories
- * - edis_document_list:        documents filed in one investigation
- * - edis_document_detail:      full detail for one document id
- * - edis_attachment_list:      attachments (metadata) filed on one document
  *
  * ── PRIVACY: ITC STAFF ARE STRIPPED, NOT JUST UNNAMED ──────────────────────
  * `investigation/{id}` embeds `case_manager_id` — an ITC STAFF record with
@@ -678,55 +674,6 @@ function collapse(s: string): string {
  * redacting it to a name. If a future case/participants-style endpoint is
  * added here, apply the same rule — party names (companies, their counsel)
  * are ordinary public-docket data; ITC staff/case-manager names are not.
- *
- * ── EDIS: KEYLESS FIRST, TOKEN AS FALLBACK ONLY ─────────────────────────────
- * Every `edis_*` call tries the keyless route first (`edisGetKeylessFirst`).
- * Only if THAT fails — a non-200, an HTTP 401/403, or a body that turns out
- * to be USITC's generic "under maintenance" HTML page rather than data — does
- * it retry ONCE with `Authorization: Basic <token>`, and only when a token is
- * present and its own `exp` has not passed (an expired token is never even
- * sent; the fallback attempt is skipped straight to the refusal). If BOTH the
- * keyless route and the token fallback fail, the call throws — never an
- * empty/partial result — and the message says which case it is: no fallback
- * token available, a fallback token that's expired, or a fallback token that
- * was sent and still refused.
- *
- * `PLATFORM_EDIS_TOKEN` is a JWT (payload `sub: "MOJIBAKE"`) Bruce obtained
- * through EDIS's login.gov-gated registration — not a self-service signup
- * key — sent as `Authorization: Basic <token>` (the raw JWT goes straight
- * after "Basic ", it is not further base64-encoded here) ONLY on a fallback
- * attempt. It EXPIRES 2026-10-08T04:00:00Z, about two weeks after issue, and
- * renewing it needs Bruce to sign in via login.gov again — there is no
- * automated rotation path. Because the keyless route is primary, that expiry
- * is NOT the operational risk it would be for an always-token design: this
- * pack keeps answering real data with no credential at all unless and until
- * EDIS's keyless route itself closes, at which point the token becomes load-
- * bearing and its expiry starts to matter. `token_expires_at` (and a
- * `token_warning` once under 3 days remain) is surfaced ONLY on a response
- * that actually needed the fallback — a normal keyless call carries neither,
- * because a countdown on a credential the call didn't use would be noise.
- *
- * A refusal (fallback needed, none available/expired/rejected) is worded
- * `auth_required: ...`, the token the gateway's classifier anchors on
- * (`shared/src/error-prefix.ts`); when the gateway injected its own key
- * (`usedPlatformKey`), that classifies as
- * `credential: {holder:'pipeworx', state:'rejected'}` —
- * `workers/gateway/src/error-class.ts` documents this exact case ("OUR key
- * was sent and refused — expired or revoked"). The platform-key monitor
- * probe is pinned to `edis_document_list` (see
- * `scripts/sync-platform-key-probes.mjs` `PROBE_OVERRIDES`) and exercises
- * the keyless route, which is the one that actually matters day to day.
- *
- * NEVER call `POST secretKey/{username}` (the WADL's key-mint endpoint) —
- * minting a fresh key may revoke the one Bruce is holding. See README.md for
- * the renewal procedure as far as EDIS's own docs establish it; renewal only
- * matters if the keyless route ever closes.
- *
- * `investigationNumber` NORMALIZATION TRAP (EDIS only): pass "337-TA-1400"
- * in and every downstream reference (documentListUri, the
- * investigationNumber field on returned documents) comes back "337-1400" —
- * EDIS drops "-TA-" internally. `edis_document_list` accepts either spelling
- * and normalizes before calling.
  *
  * IDS advanced-search CRITERIA DSL IS UNKNOWN. `advanced-search`'s `criteria`
  * array accepts SOMETHING structured (the live Angular app builds it), but
@@ -747,23 +694,6 @@ function collapse(s: string): string {
 
 
 const UA = 'pipeworx-usitc-edis/1.0 (+https://pipeworx.io)';
-// edis.usitc.gov's WAF answers 403 (its generic "under maintenance" HTML
-// page, not a normal 403 body) on ANY User-Agent that doesn't start with a
-// recognized HTTP-client signature — measured live 2026-09-24: bare curl
-// (`curl/8.7.1`), `curl/7.64.1` and `python-requests/2.31.0` all pass;
-// a blank UA, `Wget/1.21`, a browser UA, and our own plain `UA` string above
-// all 403. Prefix-matched, not exact: `curl/8.7.1 pipeworx-usitc-edis/1.0`
-// passes too, which is how this stays an honest identification rather than a
-// literal impersonation of curl — verified live across document list,
-// document/{id}, and attachment/{id}. ids.usitc.gov has no such rule; the
-// ordinary `UA` above works there unmodified.
-// RULED (Bruce, 2026-09-25, `ship-curl-prefix`): the curl/ prefix is a CASE
-// ruling for EDIS, whose WAF 403s every non-generic client even WITH our token
-// (verified). It is not a general licence to prefix other User-Agents — the
-// "don't forge identity to defeat a block" carve-out in CLAUDE.md still governs
-// every other source. Keep our own name in the string.
-const EDIS_UA = `curl/8.7.1 ${UA}`;
-const EDIS_BASE = 'https://edis.usitc.gov/data';
 const IDS_BASE = 'https://ids.usitc.gov/idata/api/v1';
 // ids.usitc.gov's API rejects requests with no browser-shaped Origin/Referer
 // (verified live 2026-09-24) — an ordinary "pipeworx-usitc-edis/1.0" User-Agent
@@ -777,26 +707,15 @@ const IDS_HEADERS = {
 
 async function pwFetch(url: string | URL, init?: RequestInit): Promise<Response> {
   const headers = { 'User-Agent': UA, ...(init?.headers ?? {}) };
-  return fetchWithTimeout(url, { ...init, headers }, 'USITC EDIS/IDS');
+  return fetchWithTimeout(url, { ...init, headers }, 'USITC IDS');
 }
 
 /** An upstream 200/503 carrying the site's "under maintenance" HTML page has
  *  to be told apart from a genuine empty result. Measured live 2026-09-24:
- *  USITC serves this SAME page for at least THREE unrelated conditions —
- *  (1) genuine intermittent downtime on either host, unrelated to any
- *  scheduled window; (2) on IDS, a malformed advanced-search request body;
- *  (3) on EDIS, a present-but-invalid Authorization header (a bogus Basic
- *  value reliably 503s this page, while sending NO header at all gets a
- *  clean 200 with real data — so EDIS actively rejects a bad credential, it
- *  just disguises the rejection as "the whole site is down" rather than a
- *  401). None of the three is distinguishable from the response alone. This
- *  is deliberately classified `upstream_down` (retriable) rather than
- *  `auth_required`, even on an EDIS call that sent a token: condition (1) is
- *  the common case in practice (it fired repeatedly against keyless IDS
- *  calls that sent no credential at all), and wrongly asserting "Pipeworx's
- *  key is dead" on what is usually a flaky vendor would put a healthy key on
- *  a false rotation list. `requireLiveToken`'s own expiry check is what
- *  catches a token we KNOW is dead, before any request goes out. */
+ *  USITC serves this page for both genuine intermittent downtime and a
+ *  malformed advanced-search request body — the two are not distinguishable
+ *  from the response alone, so this is deliberately classified
+ *  `upstream_down` (retriable) rather than anything credential-shaped. */
 function assertRealBody(body: string, label: string, hint: string): void {
   if (/<html/i.test(body) || /site under maintenance/i.test(body)) {
     throw new Error(
@@ -998,7 +917,7 @@ async function idsInvestigationDetail(args: Record<string, unknown>) {
     related_investigation_count: d.related_investigations?.length ?? 0,
     consolidated_count: d.consolidated_list?.length ?? 0,
     severed_count: d.severed_list?.length ?? 0,
-    note: 'Filed documents and attachments are a SEPARATE credentialed service — use edis_document_list with this investigation_number.',
+    note: 'Filed documents and attachments (EDIS) are not served by this pack — USITC\'s EDIS WAF blocks non-generic User-Agents even with a valid key, and Pipeworx does not spoof one. They await a USITC allowlist of our User-Agent.',
     source: 'USITC Investigations Database System (ids.usitc.gov), keyless',
   };
 }
@@ -1017,352 +936,8 @@ async function idsInvestigationTypes() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// EDIS — Electronic Document Information System (login.gov-token-gated)
-// ═══════════════════════════════════════════════════════════════════════
-
-function base64UrlDecode(seg: string): string {
-  const padded = seg.replace(/-/g, '+').replace(/_/g, '/').padEnd(seg.length + ((4 - (seg.length % 4)) % 4), '=');
-  return atob(padded);
-}
-
-/** Returns the JWT's `exp` claim in epoch milliseconds, or null if the token
- *  is not a well-formed JWT / carries no `exp`. */
-function jwtExpMs(token: string): number | null {
-  const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  try {
-    const payload = JSON.parse(base64UrlDecode(parts[1])) as { exp?: number };
-    if (typeof payload.exp !== 'number') return null;
-    return payload.exp * 1000;
-  } catch {
-    return null;
-  }
-}
-
-/** Attaches `token_expires_at`, and `token_warning` once under 3 days remain,
- *  to a response that had to fall back to the token — never called on a
- *  response the keyless route answered on its own (see `edisGetKeylessFirst`).
- *  That is what makes the cliff visible only when it is actually relevant:
- *  a caller who never needed the fallback has no reason to see a countdown
- *  on a credential their call didn't use. */
-function withExpiryMeta<T extends Record<string, unknown>>(payload: T, token: string): T & {
-  token_expires_at: string;
-  token_warning?: string;
-} {
-  const expMs = jwtExpMs(token) ?? 0;
-  const expiresAt = new Date(expMs).toISOString();
-  const msRemaining = expMs - Date.now();
-  const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
-  if (msRemaining > 0 && msRemaining < threeDaysMs) {
-    const hours = Math.max(1, Math.round(msRemaining / (60 * 60 * 1000)));
-    return {
-      ...payload,
-      token_expires_at: expiresAt,
-      token_warning: `This call needed the Pipeworx USITC EDIS fallback token, which expires in ~${hours}h (${expiresAt}). Renewal needs Bruce's login.gov sign-in — flag this before it lapses.`,
-    };
-  }
-  return { ...payload, token_expires_at: expiresAt };
-}
-
-function authHeaders(token: string): Record<string, string> {
-  return { Authorization: `Basic ${token}`, Accept: 'application/xml', 'User-Agent': EDIS_UA };
-}
-
-// ── Tiny XML reader — Workers have no DOMParser; EDIS's XML is small, flat,
-// and regular (mirrors mcps/faa-delays' approach). ────────────────────────
-
-function tag(block: string, name: string): string | null {
-  const m = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`, 'i').exec(block);
-  if (!m) return null;
-  const v = m[1].trim();
-  return v === '' ? null : decodeXmlEntities(v);
-}
-
-function blocks(xml: string, name: string): string[] {
-  const out: string[] = [];
-  const re = new RegExp(`<${name}>([\\s\\S]*?)</${name}>`, 'gi');
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(xml)) !== null) out.push(m[1]);
-  return out;
-}
-
-function decodeXmlEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'");
-}
-
-function buildUrl(path: string, params: Record<string, string | number | undefined>): string {
-  const u = new URL(`${EDIS_BASE}/${path}`);
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined && v !== '') u.searchParams.set(k, String(v));
-  }
-  return u.toString();
-}
-
-/** True on the same "under maintenance" HTML page `assertRealBody` throws on
- *  — checked here WITHOUT throwing, because a keyless-first caller needs to
- *  know "did this attempt actually work" as a boolean it can act on (try the
- *  fallback), not an exception it has to catch and re-interpret. */
-function looksLikeMaintenancePage(body: string): boolean {
-  return /<html/i.test(body) || /site under maintenance/i.test(body);
-}
-
-interface EdisFetchResult {
-  body: string;
-  /** true only when the keyless attempt failed and the Basic-auth fallback
-   *  was the one that actually produced this body. */
-  usedFallbackToken: boolean;
-}
-
-/**
- * KEYLESS FIRST, TOKEN AS FALLBACK ONLY (Kaarina, 2026-09-24, superseding the
- * original always-token design after live verification: every EDIS GET
- * resource answers 200 with real rows and NO Authorization header at all —
- * `Accept: application/json` 406s on these three resources, `Accept:
- * application/xml` is what returns data).
- *
- * Attempt 1: no Authorization header. If it comes back 200 with a body that
- * is not the maintenance-page shape, that IS the answer — no token was ever
- * consulted, so a caller with no token, or an expired one, still gets real
- * data on the common path.
- *
- * Attempt 2 (only on a non-200, an HTTP 401/403, or a maintenance-page body
- * on attempt 1): retry ONCE with `Authorization: Basic <token>`, and only if
- * a token is present and its own `exp` has not passed — an expired token is
- * never sent, it just shortens straight to the explicit refusal below. If
- * the fallback succeeds, its body is the answer and `usedFallbackToken` is
- * true, which is what tells the caller (`withExpiryMeta`) to surface
- * `token_expires_at`.
- *
- * If both attempts fail, this throws — never returns an empty/partial
- * result. The message says which case it is: no token available for the
- * fallback, an expired token that was never sent, or a token that was sent
- * and still refused.
- */
-async function edisGetKeylessFirst(
-  path: string,
-  params: Record<string, string | number | undefined>,
-  args: Record<string, unknown>,
-  label: string,
-): Promise<EdisFetchResult> {
-  const url = buildUrl(path, params);
-
-  const keylessRes = await pwFetch(url, { headers: { Accept: 'application/xml', 'User-Agent': EDIS_UA } });
-  const keylessBody = await keylessRes.text();
-  if (keylessRes.ok && !looksLikeMaintenancePage(keylessBody)) {
-    return { body: keylessBody, usedFallbackToken: false };
-  }
-
-  // Keyless failed — decide whether a fallback attempt is even possible
-  // BEFORE spending a second request on a token we already know is dead.
-  const token = typeof args._apiKey === 'string' ? args._apiKey.trim() : '';
-  const keylessFailureNote = `the keyless route failed on ${label} (HTTP ${keylessRes.status}${looksLikeMaintenancePage(keylessBody) ? ', a maintenance/HTML page' : ''})`;
-
-  if (!token) {
-    throw new Error(
-      `auth_required: USITC EDIS requires an API key: ${keylessFailureNote} and no Pipeworx EDIS token is ` +
-        'available as a fallback. This can be genuine intermittent EDIS downtime — retry shortly — or the ' +
-        'fallback token needs provisioning.',
-    );
-  }
-  const expMs = jwtExpMs(token);
-  if (expMs === null) {
-    throw new Error(
-      `auth_required: USITC EDIS requires an API key: ${keylessFailureNote}, and the fallback token available ` +
-        'is not a well-formed JWT (expected header.payload.signature) — it cannot be trusted without a decodable expiry, so it was not sent.',
-    );
-  }
-  if (expMs <= Date.now()) {
-    throw new Error(
-      `auth_required: USITC EDIS requires an API key: the keyless route failed and the Pipeworx EDIS token ` +
-        `expired on ${new Date(expMs).toISOString()}. Renewing it needs a login.gov sign-in — see the ` +
-        'usitc-edis README. This stays refused until either EDIS\'s keyless route recovers or the token is renewed.',
-    );
-  }
-
-  const fallbackRes = await pwFetch(url, { headers: authHeaders(token) });
-  const fallbackBody = await fallbackRes.text();
-  if (fallbackRes.status === 401 || fallbackRes.status === 403) {
-    throw new Error(
-      `auth_required: USITC EDIS requires an API key: ${keylessFailureNote}, and the Pipeworx EDIS token was ` +
-        `also rejected on the fallback attempt (HTTP ${fallbackRes.status}). The token may be revoked even ` +
-        'though it has not yet reached its recorded expiry.',
-    );
-  }
-  if (!fallbackRes.ok || looksLikeMaintenancePage(fallbackBody)) {
-    throw new Error(
-      `upstream_down: USITC EDIS: both the keyless route and the Pipeworx-token fallback failed on ${label} ` +
-        `(keyless HTTP ${keylessRes.status}, token fallback HTTP ${fallbackRes.status}). This reads as genuine ` +
-        `EDIS unavailability rather than a credential problem — retry shortly. Detail: ${summarizeErrorBody(fallbackBody)}`,
-    );
-  }
-  return { body: fallbackBody, usedFallbackToken: true };
-}
-
-interface EdisDocument {
-  document_id: string | null;
-  document_type: string | null;
-  document_title: string | null;
-  security_level: string | null;
-  investigation_number: string | null;
-  investigation_phase: string | null;
-  investigation_title: string | null;
-  investigation_type: string | null;
-  filed_by: string | null;
-  firm_organization: string | null;
-  on_behalf_of: string | null;
-  document_date: string | null;
-  official_received_date: string | null;
-  attachment_list_uri: string | null;
-  modified_date: string | null;
-  // Only present via edis_document_detail (the /detail resource).
-  system_receive_date?: string | null;
-  docket_number?: string | null;
-  party_served?: string | null;
-  special_processing?: string | null;
-}
-
-function shapeDocument(b: string, withDetail: boolean): EdisDocument {
-  const base: EdisDocument = {
-    document_id: tag(b, 'id'),
-    document_type: tag(b, 'documentType'),
-    document_title: tag(b, 'documentTitle'),
-    security_level: tag(b, 'securityLevel'),
-    investigation_number: tag(b, 'investigationNumber'),
-    investigation_phase: tag(b, 'investigationPhase'),
-    investigation_title: tag(b, 'investigationTitle'),
-    investigation_type: tag(b, 'investigationType'),
-    filed_by: tag(b, 'filedBy'),
-    firm_organization: tag(b, 'firmOrganization'),
-    on_behalf_of: tag(b, 'onBehalfOf'),
-    document_date: tag(b, 'documentDate'),
-    official_received_date: tag(b, 'officialReceivedDate'),
-    attachment_list_uri: tag(b, 'attachmentListUri'),
-    modified_date: tag(b, 'modifiedDate'),
-  };
-  if (withDetail) {
-    base.system_receive_date = tag(b, 'systemReceiveDate');
-    base.docket_number = tag(b, 'docketNumber');
-    base.party_served = tag(b, 'partyServed');
-    base.special_processing = tag(b, 'specialProcessing');
-  }
-  return base;
-}
-
-interface Attachment {
-  attachment_id: string | null;
-  document_id: string | null;
-  title: string | null;
-  file_size_bytes: number | null;
-  page_count: number | null;
-  create_date: string | null;
-  last_modified_date: string | null;
-  download_uri: string | null;
-}
-
-function shapeAttachment(b: string): Attachment {
-  const fileSize = tag(b, 'fileSize');
-  const pageCount = tag(b, 'pageCount');
-  return {
-    attachment_id: tag(b, 'id'),
-    document_id: tag(b, 'documentId'),
-    title: tag(b, 'title'),
-    file_size_bytes: fileSize ? Number(fileSize) : null,
-    page_count: pageCount ? Number(pageCount) : null,
-    create_date: tag(b, 'createDate'),
-    last_modified_date: tag(b, 'lastModifiedDate'),
-    download_uri: tag(b, 'downloadUri'),
-  };
-}
-
-/** "337-TA-1400" -> "337-1400" — EDIS's own responses use the dash form
- *  without "TA" (documentListUri, investigationNumber on documents), so
- *  accept either spelling and normalize before it goes in a query string. */
-function normalizeInvestigationNumber(raw: string): string {
-  return raw.trim().replace(/-TA-/i, '-');
-}
-
-/** Wraps a shaped payload with fallback metadata ONLY when the fallback token
- *  actually produced it — a keyless success gets the payload untouched. */
-function withFallbackMeta<T extends Record<string, unknown>>(payload: T, result: EdisFetchResult, args: Record<string, unknown>): T {
-  if (!result.usedFallbackToken) return payload;
-  const token = typeof args._apiKey === 'string' ? args._apiKey.trim() : '';
-  return withExpiryMeta(payload, token);
-}
-
-async function documentList(args: Record<string, unknown>) {
-  const rawNumber = String(args.investigation_number ?? '').trim();
-  if (!rawNumber) throw new Error('Required argument "investigation_number" is missing, e.g. "337-TA-1400" or "337-1400".');
-  const number = normalizeInvestigationNumber(rawNumber);
-  const phase = typeof args.investigation_phase === 'string' ? args.investigation_phase : undefined;
-  const documentType = typeof args.document_type === 'string' ? args.document_type : undefined;
-  const pageNumber = typeof args.page_number === 'number' ? args.page_number : 1;
-  const result = await edisGetKeylessFirst('document', {
-    investigationNumber: number,
-    investigationPhase: phase,
-    documentType,
-    pageNumber,
-  }, args, `document list for ${number}`);
-  const rows = blocks(result.body, 'document').map((b) => shapeDocument(b, false));
-  return withFallbackMeta({
-    investigation_number: number,
-    filters: { investigation_phase: phase ?? null, document_type: documentType ?? null, page_number: pageNumber },
-    count: rows.length,
-    documents: rows,
-    note: rows.length === 0 ? `No documents matched on this page for ${number} — try a different page_number, drop document_type, or confirm the investigation number with itc_investigation_search.` : undefined,
-  }, result, args);
-}
-
-async function documentDetail(args: Record<string, unknown>) {
-  const documentId = String(args.document_id ?? '').trim();
-  if (!documentId) throw new Error('Required argument "document_id" is missing, e.g. "889265" (from edis_document_list).');
-  const result = await edisGetKeylessFirst(`document/${encodeURIComponent(documentId)}/detail`, {}, args, `document ${documentId} detail`);
-  const rows = blocks(result.body, 'document').map((b) => shapeDocument(b, true));
-  if (rows.length === 0) {
-    return withFallbackMeta({
-      document_id: documentId,
-      found: false,
-      message: `No document found for id ${documentId}. Confirm the id via edis_document_list.`,
-    }, result, args);
-  }
-  return withFallbackMeta({ found: true, document: rows[0] }, result, args);
-}
-
-async function attachmentList(args: Record<string, unknown>) {
-  const documentId = String(args.document_id ?? '').trim();
-  if (!documentId) throw new Error('Required argument "document_id" is missing, e.g. "889265" (from edis_document_list).');
-  const result = await edisGetKeylessFirst(`attachment/${encodeURIComponent(documentId)}`, {}, args, `attachments for document ${documentId}`);
-  const rows = blocks(result.body, 'attachment').map(shapeAttachment);
-  return withFallbackMeta({
-    document_id: documentId,
-    count: rows.length,
-    attachments: rows,
-    note: rows.length === 0 ? `No attachments on file for document ${documentId}. Not every filing carries an attachment.` : undefined,
-  }, result, args);
-}
-
-// ═══════════════════════════════════════════════════════════════════════
 // Tool defs + router
 // ═══════════════════════════════════════════════════════════════════════
-
-// Not in any EDIS tool's `required` list, and not needed for an ordinary
-// call — these tools work keylessly. The gateway still injects the platform
-// key via `platformKeyEnv` so it is THERE as a fallback if EDIS's keyless
-// route ever fails; a caller only has reason to set this explicitly to bring
-// their own login.gov-issued EDIS secretKey instead of the Pipeworx-held
-// fallback. IDS tools carry no key property at all — they have no fallback
-// path because they never need one.
-const KEY_PROP = {
-  _apiKey: {
-    type: 'string',
-    description:
-      'Optional and not needed for a normal call — this tool works without a key. Only relevant as a fallback if EDIS\'s keyless route ever fails: a login.gov-issued USITC EDIS secretKey (not a self-service API key — see edis.usitc.gov registration). Omit to use the Pipeworx-held fallback token automatically.',
-  },
-} as const;
 
 const tools: McpToolExport['tools'] = [
   {
@@ -1384,7 +959,7 @@ const tools: McpToolExport['tools'] = [
   {
     name: 'itc_investigation_detail',
     description:
-      'Full status record for ONE USITC investigation, by its internal investigation_id (from itc_investigation_search — NOT the human "337-TA-1400" number). KEYLESS. Returns status, phase, category, docket number, every procedural date on file (institution, Federal Register notice, initial determination, target date, hearing schedule, AD/CVD determination dates), and counts of related/consolidated/severed investigations. Does NOT include filed documents (use edis_document_list with the investigation_number) or ITC staff/case-manager identity (deliberately excluded).',
+      'Full status record for ONE USITC investigation, by its internal investigation_id (from itc_investigation_search — NOT the human "337-TA-1400" number). KEYLESS. Returns status, phase, category, docket number, every procedural date on file (institution, Federal Register notice, initial determination, target date, hearing schedule, AD/CVD determination dates), and counts of related/consolidated/severed investigations. Does NOT include filed documents (EDIS is not served by this pack — see the pack description) or ITC staff/case-manager identity (deliberately excluded).',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -1398,48 +973,6 @@ const tools: McpToolExport['tools'] = [
     description: 'The top-level USITC investigation type categories (Import Injury, Unfair Imports, Factfinding, Miscellaneous) with their ids. KEYLESS. Use to know what to pass itc_investigation_search\'s investigation_type filter.',
     inputSchema: { type: 'object' as const, properties: {} },
   },
-  {
-    name: 'edis_document_list',
-    description:
-      'Documents FILED in one USITC investigation — motions, orders, certified lists, exhibits, complaints, PO subscriptions, etc. KEYLESS. PREFER OVER WEB SEARCH for "what has been filed in ITC investigation 337-TA-XXXX", "recent filings in <investigation>". Returns document id, type, title, filer, firm/organization, dates, and the attachment-list URI for each. Pass edis_document_detail the document_id for full detail; edis_attachment_list the document_id for its files.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        investigation_number: { type: 'string', description: 'e.g. "337-TA-1400" or "337-1400"' },
-        investigation_phase: { type: 'string', description: 'e.g. "Violation". Omit to match all phases.' },
-        document_type: { type: 'string', description: 'Filter by document type, e.g. "Motion", "Order", "Complaint".' },
-        page_number: { type: 'number', description: 'Page number, 1-based (default 1).' },
-        ...KEY_PROP,
-      },
-      required: ['investigation_number'],
-    },
-  },
-  {
-    name: 'edis_document_detail',
-    description:
-      'Full detail for ONE USITC EDIS document by id (from edis_document_list). KEYLESS. Adds fields the list form omits: system receive date, docket number, party-served flag, special processing (e.g. "Before the Commission").',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        document_id: { type: 'string', description: 'A document id, e.g. "889265" (from edis_document_list).' },
-        ...KEY_PROP,
-      },
-      required: ['document_id'],
-    },
-  },
-  {
-    name: 'edis_attachment_list',
-    description:
-      'Attachment METADATA (not the files themselves) filed on one USITC EDIS document — title, file size, page count, dates, and the download URI. KEYLESS. Use to see what was attached to a filing (e.g. exhibits to a motion) before deciding whether it is worth fetching.',
-    inputSchema: {
-      type: 'object' as const,
-      properties: {
-        document_id: { type: 'string', description: 'A document id, e.g. "889265" (from edis_document_list).' },
-        ...KEY_PROP,
-      },
-      required: ['document_id'],
-    },
-  },
 ];
 
 async function callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
@@ -1450,12 +983,6 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
       return idsInvestigationDetail(args);
     case 'itc_investigation_types':
       return idsInvestigationTypes();
-    case 'edis_document_list':
-      return documentList(args);
-    case 'edis_document_detail':
-      return documentDetail(args);
-    case 'edis_attachment_list':
-      return attachmentList(args);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -1464,4 +991,4 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<un
 export default { tools, callTool, meter: { credits: 1 } } satisfies McpToolExport;
 
 // Exported for the pack's own unit tests only — not part of McpToolExport.
-export const __testables = { jwtExpMs, withExpiryMeta, normalizeInvestigationNumber, lookupName };
+export const __testables = { lookupName };

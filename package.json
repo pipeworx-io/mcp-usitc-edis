@@ -1,7 +1,7 @@
 {
   "name": "@pipeworx/mcp-usitc-edis",
-  "version": "0.1.0",
-  "description": "USITC EDIS / IDS — the docket for Section 337 (unfair-import / patent) and",
+  "version": "0.1.1",
+  "description": "USITC IDS (Investigations Database System, ids.usitc.gov) — the CASE",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
@@ -26,7 +26,7 @@
     "@cloudflare/workers-types": "^4.20260405.1"
   },
   "pipeworx": {
-    "sourceHash": "v1-24e92e093ef03e9a4b9947e4b6de4a2960818f602f31236334fb5db2d9bffbf9",
-    "sourceCommit": "ec84f7a608c872093ea6ba846ef0dd6e694510cc"
+    "sourceHash": "v1-553ac3846c0530bbab95545cd55a8ab1010d3de392c46ff0119cb3ede85acb7a",
+    "sourceCommit": "8398326138ab84289d3007fd564f054e50033ee0"
   }
 }
