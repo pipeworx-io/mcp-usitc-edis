@@ -1,6 +1,6 @@
 {
   "name": "@pipeworx/mcp-usitc-edis",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "USITC IDS (Investigations Database System, ids.usitc.gov) — the CASE",
   "type": "module",
   "main": "src/index.ts",
@@ -26,7 +26,7 @@
     "@cloudflare/workers-types": "^4.20260405.1"
   },
   "pipeworx": {
-    "sourceHash": "v1-553ac3846c0530bbab95545cd55a8ab1010d3de392c46ff0119cb3ede85acb7a",
-    "sourceCommit": "8398326138ab84289d3007fd564f054e50033ee0"
+    "sourceHash": "v1-4b3e859ea7bf4a9c4784eeae6eb4d6ccd110b574b3f17d858491742beb7dd3ca",
+    "sourceCommit": "66a0692f029179984440cef6938cba7fdd41d66d"
   }
 }
