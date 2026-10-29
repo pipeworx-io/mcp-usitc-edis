@@ -1,12 +1,20 @@
 {
   "name": "@pipeworx/mcp-usitc-edis",
-  "version": "0.1.2",
-  "description": "USITC IDS (Investigations Database System, ids.usitc.gov) — the CASE",
+  "version": "0.2.0",
+  "description": "USITC IDS (Investigations Database System, ids.usitc.gov) — the CASE record for Section 337 (unfair-import / patent) and Title VII (antidumping/countervailing-duty) investigations at the US International Trade Commission: search/list all ~4,400 investigations, and full detail for one (status…",
   "type": "module",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./tools.json": "./tools.json",
+    "./package.json": "./package.json"
+  },
   "bin": {
     "mcp-usitc-edis": "bin/cli.js"
+  },
+  "files": ["bin/", "lib/", "tools.json", "server.json"],
+  "engines": {
+    "node": ">=18"
   },
   "keywords": ["mcp", "mcp-server", "model-context-protocol", "pipeworx", "usitc-edis"],
   "license": "MIT",
@@ -14,19 +22,12 @@
     "type": "git",
     "url": "git+https://github.com/pipeworx-io/mcp-usitc-edis.git"
   },
-  "scripts": {
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "tsx": "^4.19.0"
-  },
-  "devDependencies": {
-    "typescript": "^5.9.3",
-    "@cloudflare/workers-types": "^4.20260405.1"
-  },
+  "mcpName": "io.github.pipeworx-io/usitc-edis",
   "pipeworx": {
-    "sourceHash": "v1-4b3e859ea7bf4a9c4784eeae6eb4d6ccd110b574b3f17d858491742beb7dd3ca",
-    "sourceCommit": "66a0692f029179984440cef6938cba7fdd41d66d"
+    "mode": "gateway",
+    "slug": "usitc-edis",
+    "gatewaySlug": "usitc-edis",
+    "sourceHash": "v1-8eb3efc2611696947026f36c54f5c791ad18322cf528493bb596481d5cf4f47a",
+    "sourceCommit": "98853f34516646cb7c4c1460f09249b262c0269e"
   }
 }
